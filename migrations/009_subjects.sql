@@ -1,0 +1,13 @@
+CREATE TABLE IF NOT EXISTS subjects (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    code VARCHAR(20) NULL,
+    name VARCHAR(150) NOT NULL,
+    major_id BIGINT UNSIGNED NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY uq_subjects_code (code),
+    KEY idx_subjects_major_active (major_id, is_active),
+    CONSTRAINT fk_subjects_major FOREIGN KEY (major_id) REFERENCES majors (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

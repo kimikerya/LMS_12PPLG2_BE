@@ -68,13 +68,15 @@ func runMigrations(db *sql.DB, directory string) error {
 			return fmt.Errorf("membaca migration %s: %w", file, err)
 		}
 
+		// MySQL DDL (CREATE/ALTER TABLE) causes implicit commits. This transaction
+		// protects DML seeds, but cannot undo schema changes if a migration fails.
 		tx, err := db.BeginTx(context.Background(), nil)
 		if err != nil {
 			return fmt.Errorf("memulai transaction %s: %w", file, err)
 		}
 		if _, err := tx.Exec(string(sqlBytes)); err != nil {
 			tx.Rollback()
-			return fmt.Errorf("menjalankan migration %s: %w", file, err)
+			return fmt.Errorf("menjalankan migration %s: %w; periksa schema sebelum mencoba ulang, perubahan DDL mungkin sudah tersimpan", file, err)
 		}
 		if _, err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", file); err != nil {
 			tx.Rollback()

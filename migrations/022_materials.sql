@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS materials (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    class_id BIGINT UNSIGNED NOT NULL,
+    teacher_user_id BIGINT UNSIGNED NOT NULL,
+    subject_id BIGINT UNSIGNED NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT NULL,
+    material_type ENUM('pdf', 'link', 'video', 'document') NOT NULL,
+    meeting_no SMALLINT UNSIGNED NULL,
+    url VARCHAR(500) NULL,
+    file_path VARCHAR(500) NULL,
+    status ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
+    published_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_materials_class_status (class_id, status),
+    KEY idx_materials_teacher_status (teacher_user_id, status),
+    KEY idx_materials_subject (subject_id),
+    CONSTRAINT fk_materials_class FOREIGN KEY (class_id) REFERENCES classes (id) ON DELETE CASCADE,
+    CONSTRAINT fk_materials_teacher FOREIGN KEY (teacher_user_id) REFERENCES users (id),
+    CONSTRAINT fk_materials_subject FOREIGN KEY (subject_id) REFERENCES subjects (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

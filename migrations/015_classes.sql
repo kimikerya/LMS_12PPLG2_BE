@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS classes (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    academic_year_id BIGINT UNSIGNED NOT NULL,
+    education_level_id BIGINT UNSIGNED NOT NULL,
+    major_id BIGINT UNSIGNED NULL,
+    grade_level TINYINT UNSIGNED NOT NULL,
+    title VARCHAR(100) NOT NULL,
+    description TEXT NULL,
+    room VARCHAR(50) NULL,
+    status ENUM('active', 'archived') NOT NULL DEFAULT 'active',
+    created_by BIGINT UNSIGNED NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_classes_year_status (academic_year_id, status),
+    KEY idx_classes_major_grade (major_id, grade_level),
+    KEY idx_classes_created_by (created_by),
+    CONSTRAINT fk_classes_academic_year FOREIGN KEY (academic_year_id) REFERENCES academic_years (id),
+    CONSTRAINT fk_classes_education_level FOREIGN KEY (education_level_id) REFERENCES education_levels (id),
+    CONSTRAINT fk_classes_major FOREIGN KEY (major_id) REFERENCES majors (id) ON DELETE SET NULL,
+    CONSTRAINT fk_classes_creator FOREIGN KEY (created_by) REFERENCES users (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

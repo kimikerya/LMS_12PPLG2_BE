@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS user_login_sequences (
+ prefix VARCHAR(10) NOT NULL PRIMARY KEY,
+ next_value BIGINT UNSIGNED NOT NULL
+) ENGINE=InnoDB;

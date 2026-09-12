@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS assessments (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    teacher_user_id BIGINT UNSIGNED NOT NULL,
+    subject_id BIGINT UNSIGNED NULL,
+    title VARCHAR(200) NOT NULL,
+    assessment_type ENUM('quiz', 'online_exam') NOT NULL,
+    description TEXT NULL,
+    instructions TEXT NULL,
+    duration_minutes SMALLINT UNSIGNED NULL,
+    start_at DATETIME NULL,
+    end_at DATETIME NULL,
+    status ENUM('draft', 'published', 'closed') NOT NULL DEFAULT 'draft',
+    max_attempts TINYINT UNSIGNED NOT NULL DEFAULT 1,
+    result_release_mode ENUM('manual', 'automatic') NOT NULL DEFAULT 'manual',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_assessments_teacher_status (teacher_user_id, status),
+    KEY idx_assessments_subject (subject_id),
+    CONSTRAINT fk_assessments_teacher FOREIGN KEY (teacher_user_id) REFERENCES users (id),
+    CONSTRAINT fk_assessments_subject FOREIGN KEY (subject_id) REFERENCES subjects (id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

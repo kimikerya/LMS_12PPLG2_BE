@@ -4,16 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
 	"time"
 
 	"lms-website-be/internal/config"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 )
 
 // Open creates a MySQL connection pool and verifies that the server is reachable.
 func Open(cfg config.Config) (*sql.DB, error) {
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true&charset=utf8mb4&collation=utf8mb4_unicode_ci", cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName)
+	mysqlConfig := mysql.NewConfig()
+	mysqlConfig.User, mysqlConfig.Passwd = cfg.DBUser, cfg.DBPassword
+	mysqlConfig.Net, mysqlConfig.Addr = "tcp", net.JoinHostPort(cfg.DBHost, cfg.DBPort)
+	mysqlConfig.DBName, mysqlConfig.ParseTime = cfg.DBName, true
+	mysqlConfig.Loc = time.UTC
+	mysqlConfig.Timeout = 5 * time.Second
+	mysqlConfig.ReadTimeout, mysqlConfig.WriteTimeout = 15*time.Second, 15*time.Second
+	mysqlConfig.Collation = "utf8mb4_unicode_ci"
+	mysqlConfig.Params = map[string]string{"charset": "utf8mb4", "time_zone": "'+00:00'"}
+	dsn := mysqlConfig.FormatDSN()
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
