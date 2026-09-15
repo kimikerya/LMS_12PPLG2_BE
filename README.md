@@ -1,23 +1,44 @@
-# LMS_12PPLG2_BE
+# LMS SMK Citra Negara — Backend
 
-Backend Go EMS SMK Citra Negara dengan MySQL lokal melalui Laragon.
+API Go dan MySQL untuk akun, kelas, materi, tugas, asesmen, serta laporan LMS.
+Frontend: [LMS_12PPLG2_FE](https://github.com/kimikerya/LMS_12PPLG2_FE).
 
-Jalankan dari folder yang berisi `go.mod`:
+## Instalasi
+
+Siapkan Go 1.26.8 atau lebih baru dan MySQL. Dari folder backend:
+
+```powershell
+Copy-Item .env.example .env
+go mod download
+```
+
+Isi koneksi database dan `AUTH_JWT_SECRET` acak minimal 32 byte pada `.env`.
+Buat database sesuai `DB_NAME`, lalu jalankan:
 
 ```powershell
 go run ./cmd/migrate
-go run ./cmd/api
+.\scripts\start-api.cmd
 ```
 
-Migration 036 dan 037 menambahkan email opsional, data pribadi pengguna,
-serta nomor pegawai guru. Migration 038 dan 039 menambahkan penghapusan dengan
-riwayat tetap tersimpan dan penomoran ID login otomatis. Data akun yang sudah ada
-tetap dipertahankan.
+API tersedia di http://127.0.0.1:8080. Periksa koneksi database melalui
+`/health/db`. Hentikan server dengan `Ctrl+C`.
+Untuk sistem selain Windows, jalankan `go run ./cmd/api`.
+Jangan menimpa `.env` yang sudah dikonfigurasi atau memasukkannya ke Git.
 
-Panduan API, pengujian otomatis, dan contoh alur tugas:
-[docs/BACKEND_TESTING.md](docs/BACKEND_TESTING.md).
+## Build
 
-Backend masih dalam pengembangan; schema lengkap tidak berarti seluruh API selesai.
+```powershell
+go build -o .local/api.exe ./cmd/api
+```
 
-Kontrak tambah/edit/import pengguna dan detail kelas admin:
-[docs/ADMIN_MANAGEMENT.md](docs/ADMIN_MANAGEMENT.md).
+## Penyimpanan dan backup
+
+File materi, tugas, dan jawaban disimpan di `.local/uploads` atau lokasi
+`LMS_UPLOAD_DIR`. Database dan file unggahan harus dicadangkan bersama.
+
+```powershell
+go run ./cmd/backup
+```
+
+Petunjuk verifikasi dan pemulihan tersedia di [panduan backup](scripts/BACKUP.md).
+Konfigurasi rahasia, backup, dan unggahan tidak disertakan dalam repo.

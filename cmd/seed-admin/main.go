@@ -9,6 +9,7 @@ import (
 
 	"lms-website-be/internal/config"
 	"lms-website-be/internal/database"
+	"lms-website-be/internal/passwordpolicy"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -36,6 +37,9 @@ func main() {
 }
 
 func seedAdmin(db *sql.DB, password string) error {
+	if !passwordpolicy.Valid(password) {
+		return fmt.Errorf("%s", passwordpolicy.Message)
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return fmt.Errorf("membuat password hash: %w", err)

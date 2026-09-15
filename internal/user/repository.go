@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"lms-website-be/internal/database"
+	"strings"
 )
 
 type Repository struct {
@@ -16,8 +17,8 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db, transact: func(ctx context.Context, fn func(database.Querier) error) error { return database.WithTx(ctx, db, fn) }}
 }
 
-func (r *Repository) List(ctx context.Context, filter ListFilter) ([]User, error) {
-	query := `SELECT id, login_id, COALESCE(email,''), full_name, avatar_url, bio, role, status FROM users WHERE deleted_at IS NULL`
+func userFilter(filter ListFilter) (string, []any) {
+	query := " WHERE deleted_at IS NULL"
 	args := make([]any, 0, 2)
 	if filter.Role != "" {
 		query += " AND role = ?"
@@ -27,7 +28,21 @@ func (r *Repository) List(ctx context.Context, filter ListFilter) ([]User, error
 		query += " AND status = ?"
 		args = append(args, filter.Status)
 	}
-	query += " ORDER BY id DESC"
+	if filter.Search != "" {
+		term := "%" + strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(filter.Search) + "%"
+		query += " AND (full_name LIKE ? ESCAPE '!' OR login_id LIKE ? ESCAPE '!' OR email LIKE ? ESCAPE '!')"
+		args = append(args, term, term, term)
+	}
+	return query, args
+}
+
+func (r *Repository) List(ctx context.Context, filter ListFilter) ([]User, error) {
+	where, args := userFilter(filter)
+	query := `SELECT id, login_id, COALESCE(email,''), full_name, avatar_url, bio, role, status FROM users` + where + " ORDER BY id DESC"
+	if filter.Limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, filter.Limit, filter.Offset)
+	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -116,7 +131,7 @@ func insertUser(ctx context.Context, tx database.Querier, input CreateInput, pas
 }
 
 func (r *Repository) UpdateStatus(ctx context.Context, id uint64, status string) error {
-	result, err := r.db.ExecContext(ctx, "UPDATE users SET status = ? WHERE id = ? AND deleted_at IS NULL", status, id)
+	result, err := r.db.ExecContext(ctx, "UPDATE users SET auth_version=auth_version+IF(status<>?,1,0), status = ? WHERE id = ? AND deleted_at IS NULL", status, status, id)
 	if err != nil {
 		return fmt.Errorf("memperbarui status user: %w", err)
 	}

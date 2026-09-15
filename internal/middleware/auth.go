@@ -26,6 +26,7 @@ func RequireAuth(service *auth.Service, next http.Handler) http.Handler {
 		ctx, cancel := context.WithTimeout(request.Context(), 10*time.Second)
 		defer cancel()
 		claims, err := service.Authenticate(ctx, strings.TrimSpace(strings.TrimPrefix(header, "Bearer ")))
+		cancel()
 		if err != nil {
 			if errors.Is(err, auth.ErrUnauthorized) {
 				writeError(writer, http.StatusUnauthorized, err.Error())
@@ -35,7 +36,7 @@ func RequireAuth(service *auth.Service, next http.Handler) http.Handler {
 			}
 			return
 		}
-		ctx = context.WithValue(ctx, claimsKey, claims)
+		ctx = context.WithValue(request.Context(), claimsKey, claims)
 		next.ServeHTTP(writer, request.WithContext(ctx))
 	})
 }

@@ -21,7 +21,7 @@ func (h *Handler) List(writer http.ResponseWriter, request *http.Request) {
 	}
 	items, err := h.service.ListForUser(request.Context(), claims.UserID, claims.Role)
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+		classError(writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{"data": items})

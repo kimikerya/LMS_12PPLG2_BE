@@ -45,7 +45,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (User, error) {
 
 func (s *Service) UpdateStatus(ctx context.Context, id uint64, status string) error {
 	if !validStatuses[status] {
-		return fmt.Errorf("status tidak valid")
+		return inputError("status tidak valid")
 	}
 	return s.repository.UpdateStatus(ctx, id, status)
 }

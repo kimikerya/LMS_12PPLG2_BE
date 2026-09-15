@@ -19,7 +19,14 @@ func (s *Service) List(ctx context.Context, a Actor, kind string, f Filter, id u
 	if f.Limit < 1 || f.Limit > 100 || f.Offset < 0 {
 		return nil, invalid("limit harus 1–100 dan offset tidak boleh negatif")
 	}
-	return s.repository.List(ctx, a, kind, f, id)
+	items, err := s.repository.List(ctx, a, kind, f, id)
+	if err == nil && kind == "materials" && id != 0 && len(items) > 0 {
+		items[0].Attachments, err = s.repository.MaterialAttachments(ctx, id)
+	}
+	if err == nil && kind == "assignments" && id != 0 && len(items) > 0 {
+		items[0].Attachments, err = s.repository.AssignmentAttachments(ctx, id)
+	}
+	return items, err
 }
 func validTitle(title string) bool {
 	return strings.TrimSpace(title) != "" && utf8.RuneCountInString(title) <= 200
@@ -119,6 +126,10 @@ func (s *Service) Submit(ctx context.Context, a Actor, id uint64, in SubmitInput
 		return 0, forbidden
 	}
 	switch in.SubmissionType {
+	case "file":
+		if len(in.Files) == 0 || len(in.Files) > 5 || in.LinkURL != nil || in.TextAnswer != nil && len(*in.TextAnswer) > 60000 {
+			return 0, invalid("Unggah 1–5 file jawaban; catatan maksimal 60 KB.")
+		}
 	case "text":
 		if in.TextAnswer == nil || strings.TrimSpace(*in.TextAnswer) == "" || len(*in.TextAnswer) > 60000 || in.LinkURL != nil {
 			return 0, invalid("isi text_answer maksimal 60000 byte tanpa link_url")
@@ -128,13 +139,19 @@ func (s *Service) Submit(ctx context.Context, a Actor, id uint64, in SubmitInput
 			return 0, invalid("isi link_url HTTP/HTTPS tanpa text_answer")
 		}
 	default:
-		return 0, invalid("submission_type saat ini mendukung text atau link")
+		return 0, invalid("Pilih jawaban teks, tautan, atau file.")
+	}
+	if in.SubmissionType != "file" && len(in.Files) > 0 {
+		return 0, invalid("Gunakan bentuk jawaban file untuk unggahan.")
 	}
 	return s.repository.Submit(ctx, a, id, in)
 }
 func (s *Service) Submissions(ctx context.Context, a Actor, id uint64) ([]Submission, error) {
 	items, err := s.repository.Submissions(ctx, a, id)
 	if err != nil {
+		return nil, err
+	}
+	if err = s.repository.SubmissionFiles(ctx, id, items); err != nil {
 		return nil, err
 	}
 	if a.Role == "student" {

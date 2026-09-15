@@ -11,6 +11,7 @@ import (
 	"io"
 	"lms-website-be/internal/database"
 	"lms-website-be/internal/middleware"
+	"lms-website-be/internal/passwordpolicy"
 	"log"
 	"net/http"
 	"net/mail"
@@ -68,8 +69,8 @@ func validateInput(in *CreateInput, create bool) error {
 	if !validRoles[in.Role] || !validStatuses[in.Status] {
 		return inputError("Peran atau status tidak valid.")
 	}
-	if (create || in.Password != "") && (len(in.Password) < 8 || len(in.Password) > 72) {
-		return inputError("Kata sandi harus 8–72 byte.")
+	if (create || in.Password != "") && !passwordpolicy.Valid(in.Password) {
+		return inputError(passwordpolicy.Message)
 	}
 	for _, p := range []**string{&in.NIS, &in.NISN, &in.NIK, &in.NUPTK, &in.EmployeeID} {
 		if *p != nil {
@@ -145,11 +146,11 @@ func updateUser(ctx context.Context, q database.Querier, id, actorID uint64, in 
 	if id == actorID && in.Status != "active" {
 		return inputError("Anda tidak dapat menonaktifkan akun sendiri.")
 	}
-	if _, err := q.ExecContext(ctx, "UPDATE users SET login_id=?,email=NULLIF(?,''),full_name=?,status=?,birth_place=?,birth_date=?,phone=? WHERE id=?", in.LoginID, in.Email, in.FullName, in.Status, in.BirthPlace, in.BirthDate, in.Phone, id); err != nil {
+	if _, err := q.ExecContext(ctx, "UPDATE users SET login_id=?,email=NULLIF(?,''),full_name=?,auth_version=auth_version+IF(status<>?,1,0),status=?,birth_place=?,birth_date=?,phone=? WHERE id=?", in.LoginID, in.Email, in.FullName, in.Status, in.Status, in.BirthPlace, in.BirthDate, in.Phone, id); err != nil {
 		return err
 	}
 	if hash != "" {
-		if _, err := q.ExecContext(ctx, "UPDATE users SET password_hash=? WHERE id=?", hash, id); err != nil {
+		if _, err := q.ExecContext(ctx, "UPDATE users SET password_hash=?,auth_version=auth_version+1 WHERE id=?", hash, id); err != nil {
 			return err
 		}
 	}

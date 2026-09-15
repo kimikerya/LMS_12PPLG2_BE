@@ -9,6 +9,7 @@ import (
 
 	"lms-website-be/internal/config"
 	"lms-website-be/internal/database"
+	"lms-website-be/internal/passwordpolicy"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -46,6 +47,9 @@ func main() {
 }
 
 func seedStudents(db *sql.DB, password string) error {
+	if !passwordpolicy.Valid(password) {
+		return fmt.Errorf("%s", passwordpolicy.Message)
+	}
 	students := []student{
 		{loginID: "STD001", email: "student001@example.test", name: "Siswa Demo 1", nis: "20260001", nisn: "0060000001"},
 		{loginID: "STD002", email: "student002@example.test", name: "Siswa Demo 2", nis: "20260002", nisn: "0060000002"},

@@ -22,7 +22,7 @@ type lockedAssignment struct {
 
 func assignmentForUpdate(ctx context.Context, q database.Querier, id uint64) (lockedAssignment, error) {
 	var v lockedAssignment
-	err := q.QueryRowContext(ctx, `SELECT teacher_user_id, class_id, subject_id, status, due_at, close_at, allow_late, COALESCE(max_points, 100), UTC_TIMESTAMP() FROM assignments WHERE id = ? FOR UPDATE`, id).Scan(&v.Owner, &v.ClassID, &v.SubjectID, &v.Status, &v.Due, &v.CloseAt, &v.AllowLate, &v.MaxPoints, &v.Now)
+	err := q.QueryRowContext(ctx, `SELECT teacher_user_id, class_id, subject_id, status, due_at, close_at, allow_late, COALESCE(max_points, 100), UTC_TIMESTAMP() FROM assignments WHERE id = ? AND deleted_at IS NULL FOR UPDATE`, id).Scan(&v.Owner, &v.ClassID, &v.SubjectID, &v.Status, &v.Due, &v.CloseAt, &v.AllowLate, &v.MaxPoints, &v.Now)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, notFound
 	}
@@ -56,9 +56,14 @@ func (r *Repository) Submit(ctx context.Context, a Actor, assignmentID uint64, i
 		if exists {
 			return conflict("tugas sudah dikumpulkan; pengiriman ulang belum tersedia")
 		}
-		id, err = insertID(ctx, q, `INSERT INTO assignment_submissions (assignment_id, student_user_id, submission_type, text_answer, link_url, submitted_at, status) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(), ?)`, assignmentID, a.ID, in.SubmissionType, in.TextAnswer, in.LinkURL, status)
+		id, err = insertID(ctx, q, `INSERT INTO assignment_submissions (assignment_id, student_user_id, submission_type, text_answer, link_url, submitted_at, status,submitted_late) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(), ?,?)`, assignmentID, a.ID, in.SubmissionType, in.TextAnswer, in.LinkURL, status, status == "late")
 		if err != nil {
 			return err
+		}
+		for _, file := range in.Files {
+			if _, err = q.ExecContext(ctx, "INSERT INTO submission_files (submission_id,file_name,file_url) VALUES (?,?,?)", id, file.Name, file.URL); err != nil {
+				return err
+			}
 		}
 		return audit(ctx, q, a, "submit", "assignment_submissions", id)
 	})
@@ -66,14 +71,14 @@ func (r *Repository) Submit(ctx context.Context, a Actor, assignmentID uint64, i
 }
 func (r *Repository) Submissions(ctx context.Context, a Actor, assignmentID uint64) ([]Submission, error) {
 	var owner, classID uint64
-	err := r.q.QueryRowContext(ctx, "SELECT teacher_user_id, class_id FROM assignments WHERE id = ?", assignmentID).Scan(&owner, &classID)
+	err := r.q.QueryRowContext(ctx, "SELECT teacher_user_id, class_id FROM assignments WHERE id = ? AND deleted_at IS NULL", assignmentID).Scan(&owner, &classID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, notFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	query := `SELECT id, assignment_id, student_user_id, submission_type, text_answer, link_url, submitted_at, status, score, teacher_feedback, graded_at, result_released_at FROM assignment_submissions WHERE assignment_id = ?`
+	query := `SELECT id, assignment_id, student_user_id, submission_type, text_answer, link_url, submitted_at, status, score, teacher_feedback, graded_at, result_released_at,COALESCE(submitted_late,submitted_at>(SELECT due_at FROM assignments x WHERE x.id=assignment_submissions.assignment_id)) FROM assignment_submissions WHERE assignment_id = ?`
 	args := []any{assignmentID}
 	switch {
 	case a.Role == "student":
@@ -87,7 +92,9 @@ func (r *Repository) Submissions(ctx context.Context, a Actor, assignmentID uint
 	default:
 		return nil, forbidden
 	}
-	query += " ORDER BY id DESC LIMIT 100"
+	// Return the complete roster for this assignment so monitoring does not
+	// mistake submissions beyond the first 100 for missing work.
+	query += " ORDER BY id DESC"
 	rows, err := r.q.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -96,7 +103,7 @@ func (r *Repository) Submissions(ctx context.Context, a Actor, assignmentID uint
 	items := []Submission{}
 	for rows.Next() {
 		var v Submission
-		if err := rows.Scan(&v.ID, &v.AssignmentID, &v.StudentID, &v.Type, &v.TextAnswer, &v.LinkURL, &v.SubmittedAt, &v.Status, &v.Score, &v.Feedback, &v.GradedAt, &v.ReleasedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.AssignmentID, &v.StudentID, &v.Type, &v.TextAnswer, &v.LinkURL, &v.SubmittedAt, &v.Status, &v.Score, &v.Feedback, &v.GradedAt, &v.ReleasedAt, &v.IsLate); err != nil {
 			return nil, err
 		}
 		items = append(items, v)

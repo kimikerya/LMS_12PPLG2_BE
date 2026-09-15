@@ -1,2 +1,11 @@
 .env
 .local/
+
+# Dokumentasi lokal dan berkas pengujian tidak ikut commit.
+/docs/
+/tests/
+**/*_test.go
+
+/internal/testutil/
+/AGENTS.md
+/CODEX*HANDOFF*.md

@@ -102,61 +102,11 @@ type ClassDetail struct {
 }
 
 func (s *Service) detail(ctx context.Context, id uint64) (ClassDetail, error) {
-	out := ClassDetail{Members: []Member{}, Teachers: []Teacher{}, Announcements: []Announcement{}}
-	q := s.repository.db
-	err := q.QueryRowContext(ctx, `SELECT c.id,c.academic_year_id,c.education_level_id,c.major_id,c.grade_level,c.title,c.description,c.room,c.status,c.created_by,y.name,l.name,m.name FROM classes c JOIN academic_years y ON y.id=c.academic_year_id JOIN education_levels l ON l.id=c.education_level_id LEFT JOIN majors m ON m.id=c.major_id WHERE c.id=? AND c.status='active'`, id).Scan(&out.ID, &out.AcademicYearID, &out.EducationLevelID, &out.MajorID, &out.GradeLevel, &out.Title, &out.Description, &out.Room, &out.Status, &out.CreatedBy, &out.Year, &out.Level, &out.Major)
+	items, err := s.workspace(ctx, 0, "admin", id, false)
 	if err != nil {
-		return out, err
+		return ClassDetail{}, err
 	}
-	rows, err := q.QueryContext(ctx, `SELECT u.id,u.login_id,u.full_name,u.status,p.nis FROM class_members cm JOIN users u ON u.id=cm.student_user_id LEFT JOIN student_profiles p ON p.user_id=u.id WHERE cm.class_id=? AND cm.status='active' AND u.deleted_at IS NULL ORDER BY u.full_name`, id)
-	if err != nil {
-		return out, err
-	}
-	for rows.Next() {
-		var v Member
-		if err = rows.Scan(&v.ID, &v.LoginID, &v.FullName, &v.Status, &v.NIS); err != nil {
-			rows.Close()
-			return out, err
-		}
-		out.Members = append(out.Members, v)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	rows, err = q.QueryContext(ctx, `SELECT ct.id,u.id,u.full_name,ct.role,ct.subject_id,s.name,u.status FROM class_teachers ct JOIN users u ON u.id=ct.teacher_user_id LEFT JOIN subjects s ON s.id=ct.subject_id WHERE ct.class_id=? AND ct.status='active' AND u.deleted_at IS NULL ORDER BY ct.role,u.full_name`, id)
-	if err != nil {
-		return out, err
-	}
-	for rows.Next() {
-		var v Teacher
-		if err = rows.Scan(&v.ID, &v.TeacherID, &v.FullName, &v.Role, &v.SubjectID, &v.SubjectName, &v.Status); err != nil {
-			rows.Close()
-			return out, err
-		}
-		out.Teachers = append(out.Teachers, v)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	rows, err = q.QueryContext(ctx, `SELECT a.id,a.title,a.content,u.full_name,DATE_FORMAT(a.created_at,'%Y-%m-%dT%H:%i:%sZ') FROM announcements a JOIN users u ON u.id=a.author_user_id WHERE a.class_id=? AND a.deleted_at IS NULL ORDER BY a.created_at DESC,a.id DESC`, id)
-	if err != nil {
-		return out, err
-	}
-	for rows.Next() {
-		var v Announcement
-		if err = rows.Scan(&v.ID, &v.Title, &v.Content, &v.Author, &v.CreatedAt); err != nil {
-			rows.Close()
-			return out, err
-		}
-		out.Announcements = append(out.Announcements, v)
-	}
-	err = rows.Err()
-	rows.Close()
-	return out, err
+	return items[0], nil
 }
 func classID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
 	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
@@ -205,12 +155,12 @@ func (h *Handler) Detail(w http.ResponseWriter, r *http.Request) {
 		classError(w, err)
 		return
 	}
-	out, err := h.service.detail(r.Context(), id)
+	items, err := h.service.workspace(r.Context(), claims.UserID, claims.Role, id, false)
 	if err != nil {
 		classError(w, err)
 		return
 	}
-	out.MemberCount = len(out.Members)
+	out := items[0]
 	if claims.Role == "student" {
 		out.Members = []Member{}
 	}

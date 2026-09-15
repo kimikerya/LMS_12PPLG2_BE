@@ -15,6 +15,9 @@ func (s *Service) ListForUser(ctx context.Context, userID uint64, role string) (
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput, createdBy uint64, role string) (Class, error) {
+	if role != "admin" {
+		return Class{}, accessError("Penambahan kelas dikelola administrator.")
+	}
 	if err := validateClass(ctx, s.repository.db, &input); err != nil {
 		return Class{}, err
 	}

@@ -10,7 +10,7 @@ type accessError string
 func (e accessError) Error() string { return string(e) }
 
 func classAccess(ctx context.Context, q database.Querier, id, userID uint64, role string, manage bool) error {
-	if role == "admin" {
+	if role == "admin" || ((role == "curriculum" || role == "principal") && !manage) {
 		return nil
 	}
 	var allowed bool

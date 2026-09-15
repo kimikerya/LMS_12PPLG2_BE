@@ -14,6 +14,9 @@ type User struct {
 type ListFilter struct {
 	Role   string
 	Status string
+	Search string
+	Limit  int
+	Offset int
 }
 
 type CreateInput struct {

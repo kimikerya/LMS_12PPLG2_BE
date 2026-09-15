@@ -46,14 +46,22 @@ func contentQuery(kind string, actor Actor) (string, []any, error) {
 	} else {
 		query += ", NULL, NULL"
 	}
-	query += " FROM " + kind + " x WHERE 1=1"
+	query += " FROM " + kind + " x WHERE x.deleted_at IS NULL"
 	switch {
 	case monitoring(actor.Role):
 	case actor.Role == "teacher":
 		query += " AND x.teacher_user_id = ?"
 		args = append(args, actor.ID)
 	case actor.Role == "student":
-		query += " AND x.status = 'published'"
+		if kind == "assessments" {
+			query += " AND (x.status='published' OR (x.status='closed' AND EXISTS(SELECT 1 FROM assessment_attempts ar WHERE ar.assessment_id=x.id AND ar.student_user_id=? AND ar.status IN ('submitted','graded'))))"
+			args = append(args, actor.ID)
+		} else if kind == "assignments" {
+			query += " AND (x.status='published' OR (x.status='closed' AND EXISTS(SELECT 1 FROM assignment_submissions sr WHERE sr.assignment_id=x.id AND sr.student_user_id=?)))"
+			args = append(args, actor.ID)
+		} else {
+			query += " AND x.status = 'published'"
+		}
 		if kind == "assessments" {
 			query += ` AND EXISTS (SELECT 1 FROM assessment_targets atg JOIN class_members cm ON cm.class_id = atg.class_id JOIN classes c ON c.id = cm.class_id WHERE atg.assessment_id = x.id AND cm.student_user_id = ? AND cm.status = 'active' AND c.status = 'active')`
 		} else {
@@ -127,7 +135,7 @@ func requireTeaching(ctx context.Context, q database.Querier, actor Actor, class
 		return err
 	}
 	var allowed bool
-	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM class_teachers WHERE class_id = ? AND teacher_user_id = ? AND status = 'active' AND (? IS NULL OR subject_id = ? OR role = 'homeroom'))`, classID, actor.ID, subjectID, subjectID).Scan(&allowed)
+	err := q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM class_teachers WHERE class_id = ? AND teacher_user_id = ? AND status = 'active' AND (? IS NULL OR subject_id = ?))`, classID, actor.ID, subjectID, subjectID).Scan(&allowed)
 	if err != nil {
 		return err
 	}
@@ -194,7 +202,7 @@ func (r *Repository) Publish(ctx context.Context, actor Actor, kind string, id u
 		var owner, classID uint64
 		var subjectID *uint64
 		var status string
-		err := q.QueryRowContext(ctx, "SELECT teacher_user_id, class_id, subject_id, status FROM "+kind+" WHERE id = ? FOR UPDATE", id).Scan(&owner, &classID, &subjectID, &status)
+		err := q.QueryRowContext(ctx, "SELECT teacher_user_id, class_id, subject_id, status FROM "+kind+" WHERE id = ? AND deleted_at IS NULL FOR UPDATE", id).Scan(&owner, &classID, &subjectID, &status)
 		if errors.Is(err, sql.ErrNoRows) {
 			return notFound
 		}

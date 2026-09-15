@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -46,7 +47,9 @@ func main() {
 			Password string `json:"password"`
 		}
 		request.Body = http.MaxBytesReader(writer, request.Body, 8192)
-		if err := json.NewDecoder(request.Body).Decode(&input); err != nil || input.LoginID == "" || input.Password == "" {
+		decoder := json.NewDecoder(request.Body)
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil || decoder.Decode(&struct{}{}) != io.EOF || input.LoginID == "" || input.Password == "" {
 			writeJSON(writer, http.StatusBadRequest, map[string]string{"error": "login_id dan password wajib diisi"})
 			return
 		}
@@ -54,7 +57,10 @@ func main() {
 		defer cancel()
 		result, err := authService.Login(ctx, input.LoginID, input.Password)
 		if err != nil {
-			if errors.Is(err, auth.ErrCredentials) {
+			if errors.Is(err, auth.ErrLoginLimited) {
+				writer.Header().Set("Retry-After", "60")
+				writeJSON(writer, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+			} else if errors.Is(err, auth.ErrCredentials) {
 				writeJSON(writer, http.StatusUnauthorized, map[string]string{"error": err.Error()})
 			} else {
 				log.Printf("login: %v", err)
@@ -89,10 +95,12 @@ func main() {
 	mux.Handle("GET /api/profile", middleware.RequireAuth(authService, http.HandlerFunc(userHandler.Self)))
 	mux.Handle("PATCH /api/profile", middleware.RequireAuth(authService, http.HandlerFunc(userHandler.Self)))
 	mux.Handle("GET /api/users", adminUsers)
+	mux.Handle("GET /api/users/page", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(userHandler.Page))))
+	mux.Handle("GET /api/users/summary", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(userHandler.Summary))))
 	mux.Handle("PATCH /api/users/{id}", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(userHandler.Update))))
 	mux.Handle("POST /api/users/import", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(userHandler.Import))))
 	mux.Handle("GET /api/academic-options", middleware.RequireAuth(authService, middleware.RequireRoles("admin", "teacher")(http.HandlerFunc(classHandler.Options))))
-	mux.Handle("GET /api/classes/{id}", middleware.RequireAuth(authService, middleware.RequireRoles("admin", "teacher", "student")(http.HandlerFunc(classHandler.Detail))))
+	mux.Handle("GET /api/classes/{id}", middleware.RequireAuth(authService, middleware.RequireRoles("admin", "teacher", "student", "curriculum", "principal")(http.HandlerFunc(classHandler.Detail))))
 	mux.Handle("PATCH /api/classes/{id}", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(classHandler.Update))))
 	mux.Handle("POST /api/classes/{id}/announcements", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(classHandler.Announce))))
 	mux.Handle("POST /api/users", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(
@@ -105,7 +113,8 @@ func main() {
 		http.HandlerFunc(userHandler.UpdateStatus),
 	)))
 	mux.Handle("GET /api/classes", middleware.RequireAuth(authService, http.HandlerFunc(classHandler.List)))
-	mux.Handle("POST /api/classes", middleware.RequireAuth(authService, middleware.RequireRoles("admin", "teacher")(
+	mux.Handle("GET /api/classes/workspace", middleware.RequireAuth(authService, http.HandlerFunc(classHandler.Workspace)))
+	mux.Handle("POST /api/classes", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(
 		http.HandlerFunc(classHandler.Create),
 	)))
 	mux.Handle("DELETE /api/users/{id}", middleware.RequireAuth(authService, middleware.RequireRoles("admin")(http.HandlerFunc(userHandler.Delete))))
@@ -116,8 +125,12 @@ func main() {
 
 	server := &http.Server{
 		Addr:              ":" + cfg.AppPort,
-		Handler:           mux,
+		Handler:           middleware.RequestLimits(mux),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       130 * time.Second,
+		WriteTimeout:      150 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    64 << 10,
 	}
 
 	listener, err := net.Listen("tcp", server.Addr)

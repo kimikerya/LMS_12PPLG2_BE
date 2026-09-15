@@ -1,0 +1,1 @@
+ALTER TABLE assessments ADD COLUMN deleted_at DATETIME NULL;

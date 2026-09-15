@@ -21,7 +21,7 @@ func NewHandler(service *Service) *Handler {
 func (h *Handler) List(writer http.ResponseWriter, request *http.Request) {
 	users, err := h.service.List(request.Context(), ListFilter{Role: request.URL.Query().Get("role"), Status: request.URL.Query().Get("status")})
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+		managementError(writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, map[string]any{"data": users})
@@ -39,7 +39,7 @@ func (h *Handler) Get(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(writer, http.StatusInternalServerError, err.Error())
+		managementError(writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, item)
@@ -67,8 +67,7 @@ func (h *Handler) UpdateStatus(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	var input UpdateStatusInput
-	if err := json.NewDecoder(request.Body).Decode(&input); err != nil {
-		writeError(writer, http.StatusBadRequest, "format JSON tidak valid")
+	if !decodeManagement(writer, request, &input) {
 		return
 	}
 	claims, ok := middleware.ClaimsFromContext(request.Context())
@@ -85,7 +84,7 @@ func (h *Handler) UpdateStatus(writer http.ResponseWriter, request *http.Request
 			writeError(writer, http.StatusNotFound, "user tidak ditemukan")
 			return
 		}
-		writeError(writer, http.StatusBadRequest, err.Error())
+		managementError(writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "updated"})

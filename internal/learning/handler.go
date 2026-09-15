@@ -22,7 +22,10 @@ func actor(r *http.Request) Actor {
 	return Actor{ID: c.UserID, Role: c.Role}
 }
 func decode(w http.ResponseWriter, r *http.Request, value any) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 128*1024)
+	return decodeLimit(w, r, value, 128*1024)
+}
+func decodeLimit(w http.ResponseWriter, r *http.Request, value any, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
 	if err := d.Decode(value); err != nil {
