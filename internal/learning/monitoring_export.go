@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 func xmlText(s string) string {
@@ -26,6 +27,42 @@ type workbookSheet struct {
 	rows [][]any
 }
 
+func excelColumnName(column int) string {
+	name := ""
+	for n := column; n > 0; n = (n - 1) / 26 {
+		name = string(rune('A'+(n-1)%26)) + name
+	}
+	return name
+}
+
+func sheetRange(rows [][]any) (string, int) {
+	columns := 1
+	for _, row := range rows {
+		if len(row) > columns {
+			columns = len(row)
+		}
+	}
+	return "A1:" + excelColumnName(columns) + strconv.Itoa(max(len(rows), 1)), columns
+}
+
+func columnWidths(rows [][]any, columns int) []float64 {
+	widths := make([]float64, columns)
+	for column := range widths {
+		widths[column] = 12
+	}
+	for _, row := range rows {
+		for column, cell := range row {
+			width := float64(utf8.RuneCountInString(fmt.Sprint(cell)) + 2)
+			if width > widths[column] {
+				widths[column] = min(width, 42)
+			}
+		}
+	}
+	return widths
+}
+
+const workbookStyles = `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><color theme="1"/><name val="Aptos"/><family val="2"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos"/><family val="2"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF397EE8"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFDCE3EF"/></left><right style="thin"><color rgb="FFDCE3EF"/></right><top style="thin"><color rgb="FFDCE3EF"/></top><bottom style="thin"><color rgb="FFDCE3EF"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"/></cellXfs></styleSheet>`
+
 func makeWorkbook(sheets []workbookSheet) ([]byte, error) {
 	var b bytes.Buffer
 	z := zip.NewWriter(&b)
@@ -38,42 +75,56 @@ func makeWorkbook(sheets []workbookSheet) ([]byte, error) {
 		return e
 	}
 	header := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
-	types := header + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+	types := header + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>`
 	workbook := header + `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`
-	rels := header + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+	rels := header + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
 	for i, s := range sheets {
 		n := i + 1
 		types += fmt.Sprintf(`<Override PartName="/xl/worksheets/sheet%d.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`, n)
-		workbook += fmt.Sprintf(`<sheet name="%s" sheetId="%d" r:id="rId%d"/>`, xmlText(s.name), n, n)
-		rels += fmt.Sprintf(`<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>`, n, n)
+		workbook += fmt.Sprintf(`<sheet name="%s" sheetId="%d" r:id="rId%d"/>`, xmlText(s.name), n, n+1)
+		rels += fmt.Sprintf(`<Relationship Id="rId%d" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet%d.xml"/>`, n+1, n)
+		rangeRef, columns := sheetRange(s.rows)
+		widths := columnWidths(s.rows, columns)
 		var data strings.Builder
-		data.WriteString(header + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetData>`)
+		data.WriteString(header + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="` + rangeRef + `"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>`)
+		for column, width := range widths {
+			fmt.Fprintf(&data, `<col min="%d" max="%d" width="%.1f" customWidth="1"/>`, column+1, column+1, width)
+		}
+		data.WriteString(`</cols><sheetData>`)
 		for rowIndex, row := range s.rows {
-			fmt.Fprintf(&data, `<row r="%d">`, rowIndex+1)
+			if rowIndex == 0 {
+				fmt.Fprintf(&data, `<row r="%d" ht="30" customHeight="1">`, rowIndex+1)
+			} else {
+				fmt.Fprintf(&data, `<row r="%d">`, rowIndex+1)
+			}
 			for column, cell := range row {
-				ref := ""
-				for n := column + 1; n > 0; n = (n - 1) / 26 {
-					ref = string(rune('A'+(n-1)%26)) + ref
+				ref := excelColumnName(column+1) + strconv.Itoa(rowIndex+1)
+				headerStyle := ""
+				if rowIndex == 0 {
+					headerStyle = ` s="1"`
 				}
-				ref += strconv.Itoa(rowIndex + 1)
 				switch v := cell.(type) {
 				case int:
-					fmt.Fprintf(&data, "<c r=\"%s\"><v>%d</v></c>", ref, v)
+					fmt.Fprintf(&data, "<c r=\"%s\"%s><v>%d</v></c>", ref, headerStyle, v)
 				case float64:
-					data.WriteString("<c r=\"" + ref + "\"><v>" + strconv.FormatFloat(v, 'f', 2, 64) + "</v></c>")
+					style := headerStyle
+					if style == "" {
+						style = ` s="2"`
+					}
+					data.WriteString("<c r=\"" + ref + "\"" + style + "><v>" + strconv.FormatFloat(v, 'f', 2, 64) + "</v></c>")
 				default:
-					data.WriteString(`<c r="` + ref + `" t="inlineStr"><is><t xml:space="preserve">` + xmlText(fmt.Sprint(v)) + `</t></is></c>`)
+					data.WriteString(`<c r="` + ref + `"` + headerStyle + ` t="inlineStr"><is><t xml:space="preserve">` + xmlText(fmt.Sprint(v)) + `</t></is></c>`)
 				}
 			}
 			data.WriteString("</row>")
 		}
-		data.WriteString("</sheetData></worksheet>")
+		data.WriteString(`</sheetData><autoFilter ref="` + rangeRef + `"/></worksheet>`)
 		if e := write(fmt.Sprintf("xl/worksheets/sheet%d.xml", n), data.String()); e != nil {
 			return nil, e
 		}
 	}
-	for path, body := range map[string]string{"[Content_Types].xml": types + "</Types>", "xl/workbook.xml": workbook + "</sheets></workbook>", "xl/_rels/workbook.xml.rels": rels + "</Relationships>", "_rels/.rels": header + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`} {
-		if e := write(path, body); e != nil {
+	for _, file := range []struct{ path, body string }{{"[Content_Types].xml", types + "</Types>"}, {"_rels/.rels", header + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`}, {"xl/workbook.xml", workbook + "</sheets></workbook>"}, {"xl/_rels/workbook.xml.rels", rels + "</Relationships>"}, {"xl/styles.xml", header + workbookStyles}} {
+		if e := write(file.path, file.body); e != nil {
 			return nil, e
 		}
 	}
