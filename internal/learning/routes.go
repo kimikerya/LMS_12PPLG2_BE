@@ -24,6 +24,7 @@ func (h *Handler) Register(mux *http.ServeMux, authService *auth.Service) {
 	protect("GET /api/learning/summary", h.ContentSummary, "curriculum", "principal")
 	protect("GET /api/monitoring/report", h.Monitoring, "curriculum", "principal")
 	protect("GET /api/monitoring/export", h.MonitoringExport, "curriculum", "principal")
+	protect("GET /api/teacher-exports/grades", h.TeacherGradeExport, "teacher")
 	protect("POST /api/monitoring/reviews", h.MonitorReview, "curriculum")
 	protect("POST /api/materials/{id}/access", h.MaterialAccess, "student")
 	protect("GET /api/assignments", h.ListAssignments)

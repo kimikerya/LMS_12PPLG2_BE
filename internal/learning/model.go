@@ -51,6 +51,23 @@ type Filter struct {
 	ClassID       uint64
 	SubjectID     uint64
 }
+
+// TeacherGradeExportFilter deliberately contains IDs rather than display names:
+// access to each class/subject pair is verified again by the service.
+type TeacherGradeExportFilter struct {
+	ClassID, SubjectID, AssignmentID uint64
+	From, To                         *time.Time
+	Status                           string
+}
+type TeacherGradeExportRow struct {
+	StudentName, NIS, ClassName, SubjectName, AssignmentTitle, AssignmentStatus string
+	PublishedAt, DueAt, SubmittedAt                                             *time.Time
+	SubmissionStatus                                                            string
+	Late                                                                        bool
+	Score                                                                       *float64
+	MaxPoints                                                                   float64
+	GradedAt, ReleasedAt                                                        *time.Time
+}
 type MaterialInput struct {
 	ClassID      uint64  `json:"class_id"`
 	SubjectID    *uint64 `json:"subject_id"`
